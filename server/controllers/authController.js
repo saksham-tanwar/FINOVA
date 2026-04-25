@@ -35,6 +35,14 @@ const buildAuthResponse = (user) => ({
   },
 });
 
+const sendEmailSafely = async (to, subject, html) => {
+  try {
+    await sendEmail(to, subject, html);
+  } catch (error) {
+    console.error(`Email delivery failed for ${to}:`, error.message);
+  }
+};
+
 const register = async (req, res) => {
   try {
     const { fullName, email, password, phone } = req.body;
@@ -58,7 +66,7 @@ const register = async (req, res) => {
       otpExpiry,
     });
 
-    await sendEmail(
+    await sendEmailSafely(
       user.email,
       "Verify your banking account",
       `<p>Your OTP is <strong>${otp}</strong>. It expires in 10 minutes.</p>`
@@ -173,7 +181,7 @@ const googleAuth = async (req, res) => {
       await Account.create({ userId: user._id });
     }
 
-    await sendEmail(
+    await sendEmailSafely(
       user.email,
       isNewUser ? "Welcome to Finova" : "Welcome back to Finova",
       `
@@ -228,7 +236,7 @@ const forgotPassword = async (req, res) => {
 
     const resetLink = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
 
-    await sendEmail(
+    await sendEmailSafely(
       user.email,
       "Reset your banking password",
       `<p>Reset your password using this link:</p><p><a href="${resetLink}">${resetLink}</a></p>`
