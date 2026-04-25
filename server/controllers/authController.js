@@ -189,7 +189,16 @@ const googleAuth = async (req, res) => {
 
     return res.json(buildAuthResponse(user));
   } catch (error) {
-    return res.status(401).json({ message: "Google authentication failed" });
+    console.error("Google authentication failed:", error);
+
+    return res.status(401).json({
+      message:
+        error.code === "auth/id-token-expired"
+          ? "Google sign-in expired. Please try again."
+          : error.code === "auth/argument-error" || error.code === "auth/invalid-id-token"
+          ? "The Google sign-in token could not be verified."
+          : "Google authentication failed",
+    });
   }
 };
 
