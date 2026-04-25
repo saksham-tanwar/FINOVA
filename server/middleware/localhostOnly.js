@@ -1,4 +1,11 @@
 const localhostOnly = (req, res, next) => {
+  const internalApiKey = process.env.INTERNAL_API_KEY;
+  const requestApiKey = req.headers["x-internal-api-key"];
+
+  if (internalApiKey && requestApiKey && requestApiKey === internalApiKey) {
+    return next();
+  }
+
   const forwardedFor = req.headers["x-forwarded-for"];
   const remoteAddress =
     forwardedFor ||

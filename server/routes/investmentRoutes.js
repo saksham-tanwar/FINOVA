@@ -25,7 +25,7 @@ const createFdSchema = Joi.object({
   tenure: Joi.number().valid(1, 2, 3, 5, 7).required(),
 });
 
-router.get("/portfolio", localhostOnly, getPortfolio);
+router.get("/internal/portfolio", localhostOnly, getPortfolio);
 
 router.use(authMiddleware);
 

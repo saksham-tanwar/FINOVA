@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 NODE_BACKEND_URL = os.getenv("NODE_BACKEND_URL", "http://localhost:5000")
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY")
 
 mutual_fund_catalog = [
     {
@@ -108,8 +109,13 @@ def generate_recommendations(user_id: str, risk_profile: str, amount: float) -> 
 
     try:
         response = requests.get(
-            f"{NODE_BACKEND_URL}/api/investments/portfolio",
+            f"{NODE_BACKEND_URL}/api/investments/internal/portfolio",
             params={"userId": user_id},
+            headers=(
+                {"x-internal-api-key": INTERNAL_API_KEY}
+                if INTERNAL_API_KEY
+                else None
+            ),
             timeout=10,
         )
         if response.ok:

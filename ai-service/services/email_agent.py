@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 NODE_BACKEND_URL = os.getenv("NODE_BACKEND_URL", "http://localhost:5000")
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY")
 EMAIL_LABELS = [
     "file insurance claim",
     "fund transfer request",
@@ -83,7 +84,17 @@ def _extract_entities(email_text: str) -> dict[str, Any]:
 
 def _log_ai_activity(payload: dict[str, Any]) -> None:
     try:
-        requests.post(f"{NODE_BACKEND_URL}/api/ai/log", json=payload, timeout=10)
+        headers = (
+            {"x-internal-api-key": INTERNAL_API_KEY}
+            if INTERNAL_API_KEY
+            else None
+        )
+        requests.post(
+            f"{NODE_BACKEND_URL}/api/ai/log",
+            json=payload,
+            headers=headers,
+            timeout=10,
+        )
     except requests.RequestException:
         pass
 
@@ -121,9 +132,15 @@ def process_email(email_text: str, user_id: str) -> dict[str, Any]:
             "userId": user_id,
         }
         try:
+            headers = (
+                {"x-internal-api-key": INTERNAL_API_KEY}
+                if INTERNAL_API_KEY
+                else None
+            )
             response = requests.post(
                 f"{NODE_BACKEND_URL}/api/insurance/internal/claims",
                 json=claim_payload,
+                headers=headers,
                 timeout=10,
             )
             action_taken = "Insurance claim request forwarded"
