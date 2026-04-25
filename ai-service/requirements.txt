@@ -1,8 +1,5 @@
 fastapi
 uvicorn
-transformers
-torch
-sentence-transformers
 spacy
 pytesseract
 pymupdf
@@ -10,3 +7,4 @@ requests
 python-multipart
 pillow
 python-dotenv
+scikit-learn

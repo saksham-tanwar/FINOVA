@@ -5,7 +5,6 @@ from typing import Any
 import requests
 import spacy
 from dotenv import load_dotenv
-from transformers import pipeline
 
 
 load_dotenv()
@@ -20,10 +19,52 @@ EMAIL_LABELS = [
     "general inquiry",
 ]
 
-classifier = pipeline(
-    "zero-shot-classification", model="facebook/bart-large-mnli"
-)
 nlp = spacy.load("en_core_web_sm")
+
+INTENT_KEYWORDS = {
+    "file insurance claim": [
+        "claim",
+        "insurance",
+        "accident",
+        "hospital",
+        "damage",
+        "policy",
+        "reimbursement",
+    ],
+    "fund transfer request": [
+        "transfer",
+        "send money",
+        "pay",
+        "beneficiary",
+        "imps",
+        "neft",
+        "rtgs",
+    ],
+    "investment query": [
+        "invest",
+        "mutual fund",
+        "stock",
+        "sip",
+        "fd",
+        "portfolio",
+        "return",
+    ],
+    "policy update": [
+        "policy update",
+        "renewal",
+        "premium",
+        "coverage",
+        "update policy",
+    ],
+    "complaint": [
+        "complaint",
+        "issue",
+        "problem",
+        "delay",
+        "failed",
+        "angry",
+    ],
+}
 
 
 def _extract_entities(email_text: str) -> dict[str, Any]:
@@ -47,10 +88,27 @@ def _log_ai_activity(payload: dict[str, Any]) -> None:
         pass
 
 
+def _classify_intent(email_text: str) -> tuple[str, float]:
+    lowered = email_text.lower()
+    best_label = "general inquiry"
+    best_score = 0.0
+
+    for label in EMAIL_LABELS:
+        keywords = INTENT_KEYWORDS.get(label, [])
+        score = sum(1 for keyword in keywords if keyword in lowered)
+        if score > best_score:
+            best_label = label
+            best_score = float(score)
+
+    if best_score == 0:
+        return "general inquiry", 0.35
+
+    confidence = min(0.55 + best_score * 0.1, 0.95)
+    return best_label, confidence
+
+
 def process_email(email_text: str, user_id: str) -> dict[str, Any]:
-    result = classifier(email_text, EMAIL_LABELS)
-    intent = result["labels"][0]
-    confidence = float(result["scores"][0])
+    intent, confidence = _classify_intent(email_text)
     entities = _extract_entities(email_text)
     action_taken = "Guidance provided"
     message = "No backend action required. A response draft has been prepared."

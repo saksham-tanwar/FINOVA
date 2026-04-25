@@ -9,7 +9,7 @@ from routers.document_router import router as document_router
 from routers.email_router import router as email_router
 from routers.recommend_router import router as recommend_router
 from services.chatbot import initialize_chatbot
-from services.email_agent import classifier, nlp as email_nlp
+from services.email_agent import nlp as email_nlp
 from services.document_processor import nlp as document_nlp
 from services.recommender import mutual_fund_catalog
 
@@ -36,7 +36,6 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup_event():
-    _ = classifier
     _ = email_nlp
     _ = document_nlp
     _ = mutual_fund_catalog

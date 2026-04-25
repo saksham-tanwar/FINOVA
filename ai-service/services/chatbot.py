@@ -1,7 +1,7 @@
 from typing import Any
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 
 qa_pairs = [
@@ -47,14 +47,14 @@ qa_pairs = [
     {"question": "What can the chatbot help with?", "answer": "The chatbot can guide you on banking, investments, claims, transfers, and account issues."},
 ]
 
-embedding_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 encoded_questions = None
+vectorizer = TfidfVectorizer(stop_words="english")
 
 
 def initialize_chatbot() -> None:
     global encoded_questions
     questions = [pair["question"] for pair in qa_pairs]
-    encoded_questions = embedding_model.encode(questions, convert_to_numpy=True)
+    encoded_questions = vectorizer.fit_transform(questions).toarray()
 
 
 def _cosine_similarity(vector_a: np.ndarray, vector_b: np.ndarray) -> float:
@@ -68,7 +68,7 @@ def get_chat_response(message: str) -> dict[str, Any]:
     if encoded_questions is None:
         initialize_chatbot()
 
-    query_embedding = embedding_model.encode(message, convert_to_numpy=True)
+    query_embedding = vectorizer.transform([message]).toarray()[0]
     scores = np.array(
         [_cosine_similarity(query_embedding, question) for question in encoded_questions]
     )
