@@ -72,6 +72,50 @@ const getBalance = async (req, res) => {
   }
 };
 
+const topUpDemoBalance = async (req, res) => {
+  try {
+    const parsedAmount = Number(req.body.amount);
+
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      return res.status(400).json({ message: "Top-up amount must be greater than 0" });
+    }
+
+    if (parsedAmount > 1000000) {
+      return res.status(400).json({ message: "Top-up amount exceeds demo limit" });
+    }
+
+    const account = await Account.findOne({ userId: req.user.id });
+
+    if (!account) {
+      return res.status(404).json({ message: "Account not found" });
+    }
+
+    account.balance += parsedAmount;
+    await account.save();
+
+    const transaction = await Transaction.create({
+      toAccountId: account._id,
+      amount: parsedAmount,
+      type: "credit",
+      description: "Demo balance top-up",
+      status: "success",
+    });
+
+    await sendNotification(
+      req.user.id,
+      `Demo balance credited: INR ${parsedAmount.toFixed(2)} added to your account.`
+    );
+
+    return res.status(201).json({
+      message: "Demo balance added successfully",
+      account,
+      transaction,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
 const transferFunds = async (req, res) => {
   const { accountNumber, amount, transferType, description } = req.body;
   const parsedAmount = Number(amount);
@@ -221,6 +265,8 @@ const getTransactions = async (req, res) => {
 
     const [transactions, totalCount] = await Promise.all([
       Transaction.find(filter)
+        .populate("fromAccountId", "accountNumber")
+        .populate("toAccountId", "accountNumber")
         .sort({ timestamp: -1 })
         .skip((page - 1) * limit)
         .limit(limit),
@@ -289,6 +335,7 @@ const deleteBeneficiary = async (req, res) => {
 module.exports = {
   getAccount,
   getBalance,
+  topUpDemoBalance,
   transferFunds,
   getTransactions,
   addBeneficiary,

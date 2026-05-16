@@ -1,24 +1,34 @@
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import {
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import axiosInstance from "../../axiosInstance";
 import EmptyState from "../../components/EmptyState";
 import { SkeletonCardGrid } from "../../components/LoadingSkeleton";
 
 const tabs = ["Mutual Funds", "Stocks", "Fixed Deposits"];
+const defaultStocks = [
+  { symbol: "IBM", name: "International Business Machines Corporation" },
+  { symbol: "AAPL", name: "Apple Inc." },
+  { symbol: "TSLA", name: "Tesla, Inc." },
+  { symbol: "GOOGL", name: "Alphabet Inc." },
+  { symbol: "MSFT", name: "Microsoft Corporation" },
+];
 
 const formatCurrency = (value) =>
   new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
+    maximumFractionDigits: 2,
+  }).format(value || 0);
+
+const getCurrencyCodeForSymbol = (symbol = "") =>
+  symbol.endsWith(".BSE") || symbol.endsWith(".NSE") ? "INR" : "USD";
+
+const formatStockCurrency = (value, symbol) =>
+  new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: getCurrencyCodeForSymbol(symbol),
     maximumFractionDigits: 2,
   }).format(value || 0);
 
@@ -49,7 +59,10 @@ function Investments() {
   const [stockQuery, setStockQuery] = useState("");
   const [stockResults, setStockResults] = useState([]);
   const [stockPriceMap, setStockPriceMap] = useState({});
+  const [stockStatusMap, setStockStatusMap] = useState({});
   const [stockUnits, setStockUnits] = useState({});
+  const [selectedStockSymbol, setSelectedStockSymbol] = useState("");
+  const [selectedStockHistory, setSelectedStockHistory] = useState([]);
   const [fdForm, setFdForm] = useState({ amount: "", tenure: "1" });
   const [loading, setLoading] = useState(true);
 
@@ -77,6 +90,53 @@ function Investments() {
     loadFunds();
     loadPortfolio();
   }, []);
+
+  useEffect(() => {
+    const loadDefaultStocks = async () => {
+      if (activeTab !== "Stocks" || stockResults.length > 0) {
+        return;
+      }
+
+      const nextPrices = {};
+      const nextStatuses = {};
+
+      const priceResults = await Promise.allSettled(
+        defaultStocks.map(async (stock) => {
+          const priceRes = await axiosInstance.get(
+            `/investments/stocks/${encodeURIComponent(stock.symbol)}/price`
+          );
+          return {
+            symbol: stock.symbol,
+            price: priceRes.data.price,
+            source: priceRes.data.source || "unavailable",
+          };
+        })
+      );
+
+      priceResults.forEach((result) => {
+        if (result.status === "fulfilled" && result.value?.symbol) {
+          nextPrices[result.value.symbol] = result.value.price;
+          nextStatuses[result.value.symbol] = result.value.source;
+        }
+      });
+
+      setStockResults(defaultStocks);
+      setStockPriceMap(nextPrices);
+      setStockStatusMap(nextStatuses);
+      setSelectedStockSymbol(defaultStocks[0].symbol);
+
+      try {
+        const historyRes = await axiosInstance.get(
+          `/investments/stocks/${encodeURIComponent(defaultStocks[0].symbol)}/history`
+        );
+        setSelectedStockHistory(Array.isArray(historyRes.data.history) ? historyRes.data.history : []);
+      } catch (error) {
+        setSelectedStockHistory([]);
+      }
+    };
+
+    loadDefaultStocks();
+  }, [activeTab, stockResults.length]);
 
   const openFundModal = (fund) => {
     setFundModal({ open: true, fund });
@@ -124,18 +184,53 @@ function Investments() {
       const { data } = await axiosInstance.get("/investments/stocks/search", {
         params: { q: stockQuery },
       });
-      setStockResults(data);
+      const results = Array.isArray(data) ? data : [];
+      setStockResults(results);
+
+      if (results.length === 0) {
+        setStockPriceMap({});
+        setStockStatusMap({});
+        setSelectedStockSymbol("");
+        setSelectedStockHistory([]);
+        toast.error("No matching stocks found");
+        return;
+      }
 
       const nextPrices = {};
-      await Promise.all(
-        data.map(async (stock) => {
+      const priceResults = await Promise.allSettled(
+        results.map(async (stock) => {
           const priceRes = await axiosInstance.get(
             `/investments/stocks/${encodeURIComponent(stock.symbol)}/price`
           );
-          nextPrices[stock.symbol] = priceRes.data.price;
+          return {
+            symbol: stock.symbol,
+            price: priceRes.data.price,
+            source: priceRes.data.source || "unavailable",
+          };
         })
       );
+
+      const nextStatuses = {};
+      priceResults.forEach((result) => {
+        if (result.status === "fulfilled" && result.value?.symbol) {
+          nextPrices[result.value.symbol] = result.value.price;
+          nextStatuses[result.value.symbol] = result.value.source;
+        }
+      });
+
       setStockPriceMap(nextPrices);
+      setStockStatusMap(nextStatuses);
+      const nextSymbol = results[0]?.symbol || "";
+      setSelectedStockSymbol(nextSymbol);
+
+      if (nextSymbol) {
+        const historyRes = await axiosInstance.get(
+          `/investments/stocks/${encodeURIComponent(nextSymbol)}/history`
+        );
+        setSelectedStockHistory(Array.isArray(historyRes.data.history) ? historyRes.data.history : []);
+      } else {
+        setSelectedStockHistory([]);
+      }
     } catch (error) {
       toast.error(error.response?.data?.message || "Unable to search stocks");
     }
@@ -193,16 +288,56 @@ function Investments() {
 
   const chartData = useMemo(
     () =>
-      portfolio.byType.stock.map((holding, index) => ({
+      portfolio.byType.stock.map((holding) => ({
         name: holding.instrumentName.replace(".BSE", ""),
         value: Number(((holding.units || 0) * (holding.currentPrice || 0)).toFixed(2)),
-        order: index + 1,
       })),
     [portfolio]
   );
 
+  const selectedStockPrice = useMemo(() => {
+    if (!selectedStockSymbol) {
+      return null;
+    }
+
+    const price = stockPriceMap[selectedStockSymbol];
+    return price != null ? price : null;
+  }, [selectedStockSymbol, stockPriceMap]);
+
+  const getStockStatusAccent = (status) => {
+    if (status === "live") {
+      return "bg-emerald-400 text-emerald-300";
+    }
+
+    if (status === "cached") {
+      return "bg-amber-400 text-amber-300";
+    }
+
+    if (status === "fallback") {
+      return "bg-violet-400 text-violet-300";
+    }
+
+    return "bg-rose-400 text-rose-300";
+  };
+
+  const getStockStatusLabel = (status) => {
+    if (status === "live") {
+      return "Live";
+    }
+
+    if (status === "cached") {
+      return "Cached";
+    }
+
+    if (status === "fallback") {
+      return "Fallback";
+    }
+
+    return "Unavailable";
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="page-enter space-y-6">
       <div className="inline-flex rounded-md border border-slate-800 bg-slate-950 p-1">
         {tabs.map((tab) => (
           <button
@@ -332,9 +467,21 @@ function Investments() {
                   <div>
                     <p className="font-medium text-white">{stock.symbol}</p>
                     <p className="text-sm text-slate-400">{stock.name}</p>
-                    <p className="mt-1 text-sm text-cyan-300">
-                      {formatCurrency(stockPriceMap[stock.symbol])}
-                    </p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <p className="text-sm text-cyan-300">
+                        {stockPriceMap[stock.symbol] != null
+                          ? formatStockCurrency(stockPriceMap[stock.symbol], stock.symbol)
+                          : "Unavailable"}
+                      </p>
+                      <span className="inline-flex items-center gap-1 text-xs text-slate-400">
+                        <span
+                          className={`h-2 w-2 rounded-full ${getStockStatusAccent(
+                            stockStatusMap[stock.symbol]
+                          )}`}
+                        />
+                        {getStockStatusLabel(stockStatusMap[stock.symbol])}
+                      </span>
+                    </div>
                   </div>
                   <div className="flex items-center gap-3">
                     <input
@@ -446,6 +593,112 @@ function Investments() {
                 </div>
               ) : null}
             </div>
+          </div>
+
+          <div className="rounded-lg border border-slate-800 bg-slate-900 p-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h3 className="text-xl font-semibold text-white">Stock Performance</h3>
+                <p className="mt-1 text-sm text-slate-400">
+                  Review recent price movement before placing an investment.
+                </p>
+              </div>
+              {stockResults.length > 0 ? (
+                <select
+                  value={selectedStockSymbol}
+                  onChange={async (event) => {
+                    const symbol = event.target.value;
+                    setSelectedStockSymbol(symbol);
+
+                    try {
+                      const { data } = await axiosInstance.get(
+                        `/investments/stocks/${encodeURIComponent(symbol)}/history`
+                      );
+                      setSelectedStockHistory(
+                        Array.isArray(data.history) ? data.history : []
+                      );
+                    } catch (error) {
+                      setSelectedStockHistory([]);
+                      toast.error(
+                        error.response?.data?.message || "Unable to load stock performance"
+                      );
+                    }
+                  }}
+                  className="rounded-md border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none"
+                >
+                  {stockResults.map((stock) => (
+                    <option key={stock.symbol} value={stock.symbol}>
+                      {stock.symbol}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+            </div>
+
+            {selectedStockSymbol ? (
+              <>
+                <div className="mt-5 flex flex-wrap items-center gap-3">
+                  <span className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 text-xs text-cyan-300">
+                    {selectedStockSymbol}
+                  </span>
+                  <span className="text-sm text-slate-300">
+                    Current Price{" "}
+                    {selectedStockPrice != null
+                      ? formatStockCurrency(selectedStockPrice, selectedStockSymbol)
+                      : "Unavailable"}
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-xs text-slate-400">
+                    <span
+                      className={`h-2 w-2 rounded-full ${getStockStatusAccent(
+                        stockStatusMap[selectedStockSymbol]
+                      )}`}
+                    />
+                    {getStockStatusLabel(stockStatusMap[selectedStockSymbol])}
+                  </span>
+                </div>
+                <div className="mt-6 h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={Array.isArray(selectedStockHistory) ? selectedStockHistory : []}
+                    >
+                      <XAxis dataKey="date" stroke="#94a3b8" tick={{ fontSize: 12 }} />
+                      <YAxis
+                        stroke="#94a3b8"
+                        tickFormatter={(value) =>
+                          formatStockCurrency(value, selectedStockSymbol)
+                        }
+                      />
+                      <Tooltip
+                        formatter={(value) =>
+                          formatStockCurrency(value, selectedStockSymbol)
+                        }
+                        labelFormatter={(label) =>
+                          new Date(label).toLocaleDateString("en-IN", {
+                            day: "2-digit",
+                            month: "short",
+                          })
+                        }
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="close"
+                        stroke="#38bdf8"
+                        strokeWidth={3}
+                        dot={false}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </>
+            ) : (
+              <div className="mt-4">
+                <EmptyState
+                  icon="CH"
+                  title="Search a stock to view its price trend"
+                  description="Finova will load a recent performance chart for each search result so you can compare before buying."
+                />
+              </div>
+            )}
           </div>
         </div>
       ) : null}

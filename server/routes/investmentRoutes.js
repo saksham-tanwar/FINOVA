@@ -13,6 +13,7 @@ const {
   breakFD,
   searchStocks,
   getStockPrice,
+  getStockPerformance,
   buyStock,
   sellStock,
   getPortfolio,
@@ -37,6 +38,7 @@ router.post("/fd", validate(createFdSchema), createFD);
 router.post("/fd/:id/break", breakFD);
 router.get("/stocks/search", searchStocks);
 router.get("/stocks/:symbol/price", getStockPrice);
+router.get("/stocks/:symbol/history", getStockPerformance);
 router.post("/stocks/buy", buyStock);
 router.post("/stocks/:id/sell", sellStock);
 router.get("/portfolio", getPortfolio);

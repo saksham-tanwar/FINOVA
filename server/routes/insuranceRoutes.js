@@ -22,7 +22,7 @@ router.post("/internal/claims", localhostOnly, fileClaim);
 router.post("/purchase", authMiddleware, purchasePolicy);
 router.get("/my-policies", authMiddleware, getMyPolicies);
 router.get("/policy/:id", authMiddleware, getPolicyById);
-router.post("/claims", authMiddleware, upload, fileClaim);
+router.post("/claims", authMiddleware, upload.array("documents", 5), fileClaim);
 router.get("/claims", authMiddleware, getMyClaims);
 router.get("/claims/:id", authMiddleware, getClaimById);
 router.put("/claims/:id", authMiddleware, adminMiddleware, updateClaimStatus);

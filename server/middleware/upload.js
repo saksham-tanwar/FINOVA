@@ -25,4 +25,4 @@ const upload = multer({
   },
 });
 
-module.exports = upload.array("documents", 5);
+module.exports = upload;

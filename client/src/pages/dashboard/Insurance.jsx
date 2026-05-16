@@ -152,7 +152,7 @@ function Insurance() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="page-enter space-y-6">
       <div className="rounded-lg border border-slate-800 bg-slate-900 p-6">
         <div className="flex items-center justify-between gap-4">
           <div>

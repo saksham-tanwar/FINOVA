@@ -74,7 +74,7 @@ function Claims() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="page-enter space-y-6">
       <div>
         <p className="text-sm uppercase tracking-wide text-rose-400">Admin Claims</p>
         <h2 className="mt-2 text-3xl font-semibold text-white">Claims review desk</h2>

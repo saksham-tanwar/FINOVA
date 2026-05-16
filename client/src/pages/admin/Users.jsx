@@ -66,7 +66,7 @@ function Users() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="page-enter space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-sm uppercase tracking-wide text-rose-400">Admin Users</p>

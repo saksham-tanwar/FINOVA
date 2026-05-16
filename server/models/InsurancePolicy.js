@@ -45,12 +45,10 @@ const InsurancePolicySchema = new mongoose.Schema({
   },
 });
 
-InsurancePolicySchema.pre("save", function preSave(next) {
+InsurancePolicySchema.pre("save", function preSave() {
   if (this.isNew && !this.policyNumber) {
     this.policyNumber = generatePolicyNumber();
   }
-
-  next();
 });
 
 module.exports =

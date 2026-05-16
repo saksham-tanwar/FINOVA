@@ -18,10 +18,12 @@ function Transfer() {
   const [activeTab, setActiveTab] = useState("new");
   const [beneficiaries, setBeneficiaries] = useState([]);
   const [balanceData, setBalanceData] = useState(null);
+  const [transactions, setTransactions] = useState([]);
   const [selectedBeneficiary, setSelectedBeneficiary] = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [receipt, setReceipt] = useState(null);
   const [formData, setFormData] = useState({
     accountNumber: "",
     amount: "",
@@ -31,12 +33,19 @@ function Transfer() {
 
   const loadData = async () => {
     try {
-      const [balanceRes, beneficiaryRes] = await Promise.all([
+      const [balanceRes, beneficiaryRes, transactionRes] = await Promise.all([
         axiosInstance.get("/banking/balance"),
         axiosInstance.get("/banking/beneficiaries"),
+        axiosInstance.get("/banking/transactions", {
+          params: {
+            page: 1,
+            limit: 20,
+          },
+        }),
       ]);
       setBalanceData(balanceRes.data);
       setBeneficiaries(beneficiaryRes.data);
+      setTransactions(transactionRes.data.transactions || []);
     } catch (error) {
       toast.error(error.response?.data?.message || "Unable to load transfer data");
     } finally {
@@ -62,6 +71,39 @@ function Transfer() {
     Number(formData.amount) > 0 &&
     Number(formData.amount) <= Number(balanceData?.balance || 0);
 
+  const remainingBalance = useMemo(() => {
+    const amount = Number(formData.amount);
+
+    if (!Number.isFinite(amount)) {
+      return Number(balanceData?.balance || 0);
+    }
+
+    return Number(balanceData?.balance || 0) - amount;
+  }, [balanceData?.balance, formData.amount]);
+
+  const recentRecipients = useMemo(() => {
+    const seen = new Map();
+    const ownAccountNumber = balanceData?.accountNumber;
+
+    transactions.forEach((transaction) => {
+      const senderAccount = transaction.fromAccountId?.accountNumber || "";
+      const receiverAccount = transaction.toAccountId?.accountNumber || "";
+
+      if (!ownAccountNumber || senderAccount !== ownAccountNumber || !receiverAccount) {
+        return;
+      }
+
+      if (!seen.has(receiverAccount)) {
+        seen.set(receiverAccount, {
+          accountNumber: receiverAccount,
+          description: transaction.description,
+        });
+      }
+    });
+
+    return Array.from(seen.values()).slice(0, 3);
+  }, [balanceData?.accountNumber, transactions]);
+
   const handleChange = (event) => {
     setFormData((prev) => ({
       ...prev,
@@ -84,11 +126,26 @@ function Transfer() {
     setSubmitting(true);
 
     try {
-      await axiosInstance.post("/banking/transfer", {
+      const { data } = await axiosInstance.post("/banking/transfer", {
         accountNumber: resolvedAccountNumber,
         amount: Number(formData.amount),
         transferType: formData.transferType,
         description: formData.description,
+      });
+      const debitTransaction = (data.transactions || []).find(
+        (transaction) => transaction.type === "debit"
+      );
+      const timestamp = debitTransaction?.timestamp || new Date().toISOString();
+      const reference = debitTransaction?._id
+        ? `TXN-${String(debitTransaction._id).slice(-8).toUpperCase()}`
+        : `TXN-${Date.now()}`;
+
+      setReceipt({
+        amount: Number(formData.amount),
+        receiverAccount: resolvedAccountNumber,
+        transferType: formData.transferType,
+        timestamp,
+        reference,
       });
       toast.success("Transfer successful");
       setFormData({
@@ -202,8 +259,42 @@ function Transfer() {
             className="w-full rounded-md border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none"
           />
 
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+            <span className="text-slate-400">
+              Remaining balance after transfer:{" "}
+              <span className={remainingBalance < 0 ? "text-rose-400" : "text-cyan-300"}>
+                {formatCurrency(remainingBalance)}
+              </span>
+            </span>
+          </div>
+
           {Number(formData.amount) > Number(balanceData?.balance || 0) ? (
             <p className="text-sm text-rose-400">Amount exceeds available balance.</p>
+          ) : null}
+
+          {recentRecipients.length > 0 ? (
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-500">
+                Recent Recipients
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {recentRecipients.map((recipient) => (
+                  <button
+                    key={recipient.accountNumber}
+                    type="button"
+                    onClick={() =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        accountNumber: recipient.accountNumber,
+                      }))
+                    }
+                    className="rounded-full border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-200 transition hover:border-cyan-400/40 hover:text-cyan-200"
+                  >
+                    {recipient.accountNumber}
+                  </button>
+                ))}
+              </div>
+            </div>
           ) : null}
 
           <textarea
@@ -223,6 +314,46 @@ function Transfer() {
           </button>
         </form>
       </div>
+
+      {receipt ? (
+        <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-sm uppercase tracking-wide text-cyan-300">Transfer Receipt</p>
+              <h3 className="mt-2 text-2xl font-semibold text-white">
+                {formatCurrency(receipt.amount)}
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => setReceipt(null)}
+              className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-200"
+            >
+              Dismiss
+            </button>
+          </div>
+          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4 text-sm">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-400">Receiver</p>
+              <p className="mt-1 text-white">{receipt.receiverAccount}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-400">Type</p>
+              <p className="mt-1 text-white">{receipt.transferType}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-400">Timestamp</p>
+              <p className="mt-1 text-white">
+                {new Date(receipt.timestamp).toLocaleString("en-IN")}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-400">Reference</p>
+              <p className="mt-1 text-white">{receipt.reference}</p>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showConfirm ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4">

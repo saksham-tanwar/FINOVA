@@ -2,7 +2,12 @@ const Account = require("../models/Account");
 const Investment = require("../models/Investment");
 const mutualFundCatalog = require("../utils/mutualFundCatalog");
 const fdRates = require("../utils/fdRates");
-const { getLivePrice, searchStocks: searchStockService } = require("../services/stockService");
+const {
+  getLivePrice,
+  getLiveQuote,
+  getStockHistory,
+  searchStocks: searchStockService,
+} = require("../services/stockService");
 
 const getFundById = (fundId) =>
   mutualFundCatalog.find((fund) => fund.id === fundId);
@@ -252,8 +257,24 @@ const searchStocks = async (req, res) => {
 const getStockPrice = async (req, res) => {
   try {
     const symbol = req.params.symbol.toUpperCase();
-    const price = await getLivePrice(symbol);
-    return res.json({ symbol, price });
+    const quote = await getLiveQuote(symbol);
+
+    return res.json({
+      symbol,
+      price: quote.price,
+      source: quote.source,
+      lastUpdated: quote.lastUpdated,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+const getStockPerformance = async (req, res) => {
+  try {
+    const symbol = req.params.symbol.toUpperCase();
+    const history = await getStockHistory(symbol);
+    return res.json({ symbol, history });
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }
@@ -350,7 +371,11 @@ const getPortfolio = async (req, res) => {
         const plain = investment.toObject();
 
         if (plain.type === "stock" && plain.status === "active") {
-          plain.currentPrice = await getLivePrice(plain.instrumentName);
+          try {
+            plain.currentPrice = await getLivePrice(plain.instrumentName);
+          } catch (error) {
+            plain.currentPrice = plain.currentPrice || plain.purchasePrice || 0;
+          }
         } else if (plain.type === "mutual_fund" && plain.status === "active") {
           plain.currentPrice = getFundByName(plain.instrumentName)?.nav || plain.currentPrice;
         }
@@ -403,6 +428,7 @@ module.exports = {
   breakFD,
   searchStocks,
   getStockPrice,
+  getStockPerformance,
   buyStock,
   sellStock,
   getPortfolio,

@@ -6,6 +6,7 @@ const validate = require("../middleware/validate");
 const {
   getAccount,
   getBalance,
+  topUpDemoBalance,
   transferFunds,
   getTransactions,
   addBeneficiary,
@@ -21,11 +22,15 @@ const transferSchema = Joi.object({
   transferType: Joi.string().valid("NEFT", "RTGS", "IMPS").required(),
   description: Joi.string().allow("").max(250),
 });
+const topUpSchema = Joi.object({
+  amount: Joi.number().positive().max(1000000).required(),
+});
 
 router.use(authMiddleware);
 
 router.get("/account", getAccount);
 router.get("/balance", getBalance);
+router.post("/top-up", validate(topUpSchema), topUpDemoBalance);
 router.post("/transfer", validate(transferSchema), transferFunds);
 router.get("/transactions", getTransactions);
 router.post("/beneficiaries", addBeneficiary);

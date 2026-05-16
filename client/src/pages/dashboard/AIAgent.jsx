@@ -150,7 +150,7 @@ function AIAgent() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="page-enter space-y-6">
       <div className="inline-flex rounded-md border border-slate-800 bg-slate-950 p-1">
         {tabs.map((tab) => (
           <button
